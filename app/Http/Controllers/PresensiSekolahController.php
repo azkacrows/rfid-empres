@@ -12,15 +12,22 @@ class PresensiSekolahController extends Controller
     public function index()
     {
         $today = Carbon::today();
+        
+        // Ambil presensi hari ini dengan pagination
         $presensi = PresensiSekolah::with('user')
             ->whereDate('tanggal', $today)
             ->latest()
             ->paginate(20);
         
+        // PERBAIKAN: Ganti 'siswa' jadi 'user'
+        $userIdsHadir = PresensiSekolah::whereDate('tanggal', $today)->pluck('user_id')->toArray();
+        $semuaSiswa = User::where('role', 'user')->orderBy('name')->get();
+        $siswaBelumPresensi = $semuaSiswa->whereNotIn('id', $userIdsHadir);
+        
         $pengaturanMasuk = PengaturanWaktu::getSekolahMasuk();
         $pengaturanPulang = PengaturanWaktu::getSekolahPulang();
         
-        return view('presensi.sekolah', compact('presensi', 'pengaturanMasuk', 'pengaturanPulang'));
+        return view('presensi.sekolah', compact('presensi', 'pengaturanMasuk', 'pengaturanPulang', 'siswaBelumPresensi', 'semuaSiswa'));
     }
 
     public function scan(Request $request)
@@ -63,7 +70,6 @@ class PresensiSekolahController extends Controller
             $presensi->jam_masuk = $jamSekarang;
             $presensi->keterangan = 'hadir';
             
-            // Hitung keterlambatan
             $keterlambatan = PresensiSekolah::hitungKeterlambatanMasuk($jamSekarang);
             $presensi->terlambat_masuk = $keterlambatan['terlambat'];
             $presensi->menit_terlambat_masuk = $keterlambatan['menit'];
@@ -82,7 +88,6 @@ class PresensiSekolahController extends Controller
             
             $presensi->jam_keluar = $jamSekarang;
             
-            // Hitung keterlambatan
             $keterlambatan = PresensiSekolah::hitungKeterlambatanKeluar($jamSekarang);
             $presensi->terlambat_keluar = $keterlambatan['terlambat'];
             $presensi->menit_terlambat_keluar = $keterlambatan['menit'];
@@ -119,5 +124,13 @@ class PresensiSekolahController extends Controller
             'success' => true,
             'message' => 'Keterangan berhasil diperbarui!'
         ]);
+    }
+
+    public function history()
+    {
+        $presensi = PresensiSekolah::with('user')
+            ->orderBy('tanggal', 'desc')
+            ->paginate(20);
+        return view('presensi.sekolah-history', compact('presensi'));
     }
 }

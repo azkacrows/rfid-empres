@@ -1,4 +1,6 @@
 <?php
+// app/Http/Controllers/PresensiSekolahController.php
+
 namespace App\Http\Controllers;
 
 use App\Models\PresensiSekolah;
@@ -12,15 +14,23 @@ class PresensiSekolahController extends Controller
     public function index()
     {
         $today = Carbon::today();
+        
+        // Ambil presensi hari ini dengan pagination (FITUR LAMA)
         $presensi = PresensiSekolah::with('user')
             ->whereDate('tanggal', $today)
             ->latest()
             ->paginate(20);
         
+        // TAMBAHAN FITUR BARU: Ambil siswa yang belum presensi
+        $userIdsHadir = PresensiSekolah::whereDate('tanggal', $today)->pluck('user_id')->toArray();
+        $semuaSiswa = User::where('role', 'siswa')->orderBy('name')->get();
+        $siswaBelumPresensi = $semuaSiswa->whereNotIn('id', $userIdsHadir);
+        
         $pengaturanMasuk = PengaturanWaktu::getSekolahMasuk();
         $pengaturanPulang = PengaturanWaktu::getSekolahPulang();
         
-        return view('presensi.sekolah', compact('presensi', 'pengaturanMasuk', 'pengaturanPulang'));
+        // PERBAIKAN: Tambahkan 'semuaSiswa' di compact
+        return view('presensi.sekolah', compact('presensi', 'pengaturanMasuk', 'pengaturanPulang', 'siswaBelumPresensi', 'semuaSiswa'));
     }
 
     public function scan(Request $request)
@@ -119,5 +129,13 @@ class PresensiSekolahController extends Controller
             'success' => true,
             'message' => 'Keterangan berhasil diperbarui!'
         ]);
+    }
+
+    public function history()
+    {
+        $presensi = PresensiSekolah::with('user')
+            ->orderBy('tanggal', 'desc')
+            ->paginate(20);
+        return view('presensi.sekolah-history', compact('presensi'));
     }
 }

@@ -1,4 +1,3 @@
-
 @extends('layouts.app')
 
 @section('title', 'Presensi Sholat')
@@ -12,6 +11,62 @@
     .waktu-isya { background: linear-gradient(135deg, #30cfd0 0%, #330867 100%); }
     .user-sudah-absen { background-color: #d4edda !important; }
     .user-belum-absen { background-color: #f8d7da !important; }
+    
+    /* Animasi notifikasi */
+    .alert-sm {
+        animation: slideIn 0.3s ease-out;
+    }
+    
+    @keyframes slideIn {
+        from {
+            opacity: 0;
+            transform: translateY(-10px);
+        }
+        to {
+            opacity: 1;
+            transform: translateY(0);
+        }
+    }
+    
+    /* Pulse loading */
+    @keyframes pulse {
+        0%, 100% { opacity: 1; }
+        50% { opacity: 0.5; }
+    }
+    
+    .alert-info.alert-sm {
+        animation: pulse 1s ease-in-out infinite;
+    }
+    
+    /* Highlight input aktif */
+    .scan-input:focus {
+        border: 2px solid #28a745;
+        box-shadow: 0 0 10px rgba(40, 167, 69, 0.3);
+        transition: all 0.3s ease;
+    }
+    
+    /* Loading overlay */
+    .loading-overlay {
+        position: fixed;
+        top: 0;
+        left: 0;
+        width: 100%;
+        height: 100%;
+        background: rgba(0, 0, 0, 0.5);
+        display: flex;
+        justify-content: center;
+        align-items: center;
+        z-index: 9999;
+        display: none;
+    }
+    
+    .loading-spinner {
+        background: white;
+        padding: 30px;
+        border-radius: 10px;
+        text-align: center;
+        box-shadow: 0 4px 20px rgba(0, 0, 0, 0.3);
+    }
 </style>
 @endsection
 
@@ -19,6 +74,7 @@
 <div class="container-fluid">
     <h2 class="mb-4">Presensi Sholat</h2>
     
+    <!-- Card Jadwal Sholat dengan Hari & Tanggal -->
     <div class="row">
         <div class="col-md-12">
             <div class="card mb-4">
@@ -26,6 +82,12 @@
                     <h5 class="mb-0"><i class="fas fa-clock me-2"></i>Jadwal Sholat Hari Ini</h5>
                 </div>
                 <div class="card-body">
+                    <!-- Hari dan Tanggal -->
+                    <div class="text-center mb-3 pb-3 border-bottom">
+                        <h3 class="mb-1 text-success fw-bold">{{ $hari ?? 'N/A' }}</h3>
+                        <h5 class="text-muted">{{ $tanggal ?? 'N/A' }}</h5>
+                    </div>
+                    
                     @if($jadwal)
                     <div class="row text-center">
                         <div class="col">
@@ -51,7 +113,7 @@
                     </div>
                     <div class="alert alert-info mt-3 mb-0">
                         <i class="fas fa-info-circle me-2"></i>
-                        <strong>Toleransi Keterlambatan:</strong> {{ $toleransi ? $toleransi->toleransi_keterlambatan : 20 }} menit setelah adzan
+                        <strong>Batas Presensi :</strong> {{ $toleransi ? $toleransi->toleransi_keterlambatan : 20 }} menit setelah adzan
                     </div>
                     @else
                     <div class="alert alert-warning">
@@ -64,6 +126,7 @@
         </div>
     </div>
 
+    <!-- Card Input Presensi per Waktu Sholat -->
     <div class="row">
         @foreach(['subuh', 'dzuhur', 'ashar', 'maghrib', 'isya'] as $waktu)
         @php
@@ -79,25 +142,25 @@
                     </h6>
                 </div>
                 <div class="card-body">
-                    <div class="mb-2">
-                        <small class="text-muted">
-                            <i class="fas fa-check-circle text-success"></i> Sudah: {{ count($sudahAbsen) }} | 
-                            <i class="fas fa-times-circle text-danger"></i> Belum: {{ \App\Models\User::where('role', 'user')->count() - count($sudahAbsen) }}
-                        </small>
-                    </div>
-                    <input type="text" 
-                           class="form-control scan-input" 
-                           data-waktu="{{ $waktu }}" 
-                           placeholder="Scan kartu RFID..."
-                           autocomplete="off">
-                    <div id="result_{{ $waktu }}" class="mt-2"></div>
-                </div>
+    <div class="mb-2" id="stats_{{ $waktu }}">
+        <small class="text-muted">
+            <i class="fas fa-check-circle text-success"></i> Sudah: <strong>{{ count($sudahAbsen) }}</strong> | 
+            <i class="fas fa-times-circle text-danger"></i> Belum: <strong>{{ \App\Models\User::where('role', 'user')->count() - count($sudahAbsen) }}</strong>
+        </small>
+    </div>
+    <input type="text" 
+           class="form-control scan-input" 
+           data-waktu="{{ $waktu }}" 
+           placeholder="Scan kartu RFID..."
+           autocomplete="off">
+    <div id="result_{{ $waktu }}" class="mt-2"></div>
+</div>
             </div>
         </div>
         @endforeach
     </div>
 
-    <!-- Daftar User dan Status Absensi -->
+    <!-- Tabel Status Absensi Semua User -->
     <div class="card mt-4">
         <div class="card-header bg-white">
             <h5 class="mb-0"><i class="fas fa-users me-2"></i>Status Absensi Semua User Hari Ini</h5>
@@ -158,7 +221,7 @@
         </div>
     </div>
 
-    <!-- Daftar Presensi Detail -->
+    <!-- Tabel Detail Presensi Sholat -->
     <div class="card mt-4">
         <div class="card-header bg-white">
             <h5 class="mb-0"><i class="fas fa-list me-2"></i>Detail Presensi Sholat Hari Ini</h5>
@@ -196,9 +259,11 @@
                                 @endif
                             </td>
                             <td>
-                                <span class="badge {{ $p->terlambat ? 'badge-terlambat' : 'badge-ontime' }}">
-                                    {{ $p->terlambat ? 'Terlambat' : 'Tepat Waktu' }}
-                                </span>
+                                @if($p->terlambat)
+                                    <span class="badge bg-warning">Terlambat</span>
+                                @else
+                                    <span class="badge bg-success">Tepat Waktu</span>
+                                @endif
                             </td>
                             <td>
                                 <span class="badge bg-{{ $p->keterangan == 'hadir' ? 'success' : ($p->keterangan == 'izin' ? 'info' : ($p->keterangan == 'sakit' ? 'warning' : 'secondary')) }}">
@@ -263,18 +328,58 @@
 <script>
     let currentFocusedInput = null;
 
+    // ============================================
+    // 🎵 SOUND EFFECTS
+    // ============================================
+    function playSound(type) {
+        try {
+            const audioContext = new (window.AudioContext || window.webkitAudioContext)();
+            const oscillator = audioContext.createOscillator();
+            const gainNode = audioContext.createGain();
+            
+            oscillator.connect(gainNode);
+            gainNode.connect(audioContext.destination);
+            
+            if (type === 'success') {
+                oscillator.frequency.value = 800;
+                gainNode.gain.value = 0.3;
+                oscillator.start(audioContext.currentTime);
+                oscillator.stop(audioContext.currentTime + 0.1);
+            } else if (type === 'error') {
+                oscillator.frequency.value = 200;
+                gainNode.gain.value = 0.3;
+                oscillator.start(audioContext.currentTime);
+                oscillator.stop(audioContext.currentTime + 0.3);
+            } else if (type === 'warning') {
+                oscillator.frequency.value = 500;
+                gainNode.gain.value = 0.3;
+                oscillator.start(audioContext.currentTime);
+                oscillator.stop(audioContext.currentTime + 0.2);
+            }
+        } catch(e) {
+            console.log('Audio tidak didukung di browser ini');
+        }
+    }
+
+    // ============================================
+    // 🚀 PAGE LOAD
+    // ============================================
     $(document).ready(function() {
-        // Auto focus ke input pertama
         $('.scan-input').first().focus();
         currentFocusedInput = $('.scan-input').first();
     });
 
+    // ============================================
+    // 🎯 EVENT HANDLERS
+    // ============================================
     $('.scan-input').on('focus', function() {
         currentFocusedInput = $(this);
     });
 
     $('.scan-input').on('keypress', function(e) {
         if(e.which === 13) {
+            e.preventDefault();
+            
             let rfid = $(this).val().trim();
             let waktu = $(this).data('waktu');
             let inputElement = $(this);
@@ -285,67 +390,170 @@
         }
     });
 
+    // ⌨️ Keyboard shortcuts
+    $(document).on('keydown', function(e) {
+        if ($('.modal').hasClass('show')) return;
+        
+        if (e.altKey && e.which === 49) {
+            e.preventDefault();
+            $('.scan-input[data-waktu="subuh"]').focus();
+        } else if (e.altKey && e.which === 50) {
+            e.preventDefault();
+            $('.scan-input[data-waktu="dzuhur"]').focus();
+        } else if (e.altKey && e.which === 51) {
+            e.preventDefault();
+            $('.scan-input[data-waktu="ashar"]').focus();
+        } else if (e.altKey && e.which === 52) {
+            e.preventDefault();
+            $('.scan-input[data-waktu="maghrib"]').focus();
+        } else if (e.altKey && e.which === 53) {
+            e.preventDefault();
+            $('.scan-input[data-waktu="isya"]').focus();
+        }
+    });
+
+    // ============================================
+    // 📡 SCAN PRESENSI
+    // ============================================
     function scanPresensi(rfid, waktu, inputElement) {
         $.ajax({
             url: '{{ route("presensi.sholat.scan") }}',
             method: 'POST',
             data: {
+                _token: '{{ csrf_token() }}',
                 rfid_card: rfid,
                 waktu_sholat: waktu
             },
-            success: function(response) {
-                let alertClass = response.data.presensi.terlambat ? 'alert-warning' : 'alert-success';
-                
+            beforeSend: function() {
                 $(`#result_${waktu}`).html(`
+                    <div class="alert alert-info alert-sm">
+                        <i class="fas fa-spinner fa-spin me-2"></i>
+                        Memproses...
+                    </div>
+                `);
+            },
+            success: function(response) {
+                // ✅ PRESENSI BERHASIL
+                let alertClass = response.data.presensi.terlambat ? 'alert-warning' : 'alert-success';
+                let soundType = response.data.presensi.terlambat ? 'warning' : 'success';
+                
+                let notifHtml = `
                     <div class="alert ${alertClass} alert-sm">
+                        <i class="fas fa-check-circle me-2"></i>
                         <strong>${response.data.user.name}</strong><br>
                         ${response.message}
                     </div>
-                `);
+                `;
                 
-                // Clear input
+                $(`#result_${waktu}`).html(notifHtml);
+                
+                // Play beep sound
+                playSound(soundType);
+                
+                // Clear input & focus
                 inputElement.val('');
+                setTimeout(() => inputElement.focus(), 100);
                 
-                // PENTING: Kembalikan focus ke input yang sama
-                setTimeout(() => {
-                    inputElement.focus();
-                }, 100);
+                // Update counter tanpa reload
+                updateCounter(waktu);
+                updateTable(response.data);
                 
-                // Reload setelah 2 detik untuk update tabel
+                // Auto clear notifikasi setelah 5 detik
                 setTimeout(() => {
-                    // Simpan waktu sholat yang sedang aktif
-                    sessionStorage.setItem('lastActiveWaktu', waktu);
-                    location.reload();
-                }, 2000);
+                    $(`#result_${waktu}`).fadeOut('slow', function() {
+                        $(this).html('').show();
+                    });
+                }, 5000);
             },
             error: function(xhr) {
-                $(`#result_${waktu}`).html(`
-                    <div class="alert alert-danger alert-sm">
-                        ${xhr.responseJSON?.message || 'Terjadi kesalahan'}
-                    </div>
-                `);
+                // ❌ ERROR
+                let errorMessage = 'Terjadi kesalahan';
+                let userName = '';
                 
-                // Clear input dan kembalikan focus
+                if (xhr.responseJSON) {
+                    errorMessage = xhr.responseJSON.message || errorMessage;
+                    
+                    if (xhr.responseJSON.data && xhr.responseJSON.data.user) {
+                        userName = xhr.responseJSON.data.user.name;
+                    }
+                }
+                
+                let alertClass = 'alert-danger';
+                let iconClass = 'fa-exclamation-circle';
+                let soundType = 'error';
+                
+                if (xhr.status === 400) {
+                    alertClass = 'alert-warning';
+                    iconClass = 'fa-info-circle';
+                    soundType = 'warning';
+                }
+                
+                let notifHtml = `
+                    <div class="alert ${alertClass} alert-sm">
+                        <i class="fas ${iconClass} me-2"></i>
+                        ${userName ? '<strong>' + userName + '</strong><br>' : ''}
+                        ${errorMessage}
+                    </div>
+                `;
+                
+                $(`#result_${waktu}`).html(notifHtml);
+                
+                // Play beep sound
+                playSound(soundType);
+                
+                // Clear input & focus
                 inputElement.val('');
-                inputElement.focus();
+                setTimeout(() => inputElement.focus(), 100);
+                
+                // Auto clear notifikasi error setelah 5 detik
+                setTimeout(() => {
+                    $(`#result_${waktu}`).fadeOut('slow', function() {
+                        $(this).html('').show();
+                    });
+                }, 5000);
             }
         });
     }
 
-    // Setelah reload, fokus kembali ke input yang terakhir digunakan
-    $(document).ready(function() {
-        let lastWaktu = sessionStorage.getItem('lastActiveWaktu');
-        if (lastWaktu) {
-            let targetInput = $(`.scan-input[data-waktu="${lastWaktu}"]`);
-            if (targetInput.length) {
-                targetInput.focus();
-                currentFocusedInput = targetInput;
-            }
-            sessionStorage.removeItem('lastActiveWaktu');
-        }
-    });
+    // ============================================
+    // 🔄 UPDATE COUNTER (TANPA RELOAD)
+    // ============================================
+    function updateCounter(waktu) {
+        // Update counter "Sudah" di card
+        let currentCount = parseInt($(`#stats_${waktu} strong`).first().text()) || 0;
+        let newCount = currentCount + 1;
+        
+        $(`#stats_${waktu}`).html(`
+            <small class="text-muted">
+                <i class="fas fa-check-circle text-success"></i> Sudah: <strong>${newCount}</strong> | 
+                <i class="fas fa-times-circle text-danger"></i> Belum: <strong>${parseInt($(`#stats_${waktu} strong`).last().text()) - 1}</strong>
+            </small>
+        `);
+    }
 
-    // Auto re-focus jika user klik di tempat lain
+    // ============================================
+    // 📊 UPDATE TABLE (TANPA RELOAD)
+    // ============================================
+    function updateTable(data) {
+        // Refresh tabel status absensi via AJAX
+        $.ajax({
+            url: '{{ route("presensi.sholat.index") }}',
+            method: 'GET',
+            success: function(html) {
+                // Update hanya bagian tbody tabel
+                let newTableBody = $(html).find('.table-bordered tbody').html();
+                $('.table-bordered tbody').html(newTableBody);
+                
+                // Update tabel detail presensi
+                let newDetailBody = $(html).find('.table-hover tbody').html();
+                $('.table-hover tbody').html(newDetailBody);
+            }
+        });
+    }
+
+    // ============================================
+    // 🔄 AUTO RE-FOCUS
+    // ============================================
     setInterval(function() {
         if (!$('input:focus').length && !$('select:focus').length && !$('textarea:focus').length && !$('.modal').hasClass('show')) {
             if (currentFocusedInput) {
@@ -354,6 +562,9 @@
         }
     }, 3000);
 
+    // ============================================
+    // 📝 UPDATE KETERANGAN
+    // ============================================
     function updateKeterangan(id) {
         $('#presensi_id').val(id);
         $('#modalKeterangan').modal('show');
@@ -372,266 +583,36 @@
             url: '{{ route("presensi.sholat.update") }}',
             method: 'POST',
             data: {
+                _token: '{{ csrf_token() }}',
                 presensi_id: presensiId,
                 keterangan: keterangan
             },
             success: function(response) {
                 $('#modalKeterangan').modal('hide');
-                location.reload();
-            },
-            error: function(xhr) {
-                alert('Terjadi kesalahan: ' + xhr.responseJSON?.message);
-            }
-        });
-    }
-
-    // Auto refresh jadwal setiap 60 detik
-    setInterval(function() {
-        $.get('{{ route("presensi.sholat.jadwal") }}', function(response) {
-            if(response.success && response.jadwal) {
-                // Update tampilan jadwal jika diperlukan
-            }
-        });
-    }, 60000);
-</script>
-</div>
-
-<!-- Modal Update Keterangan -->
-<div class="modal fade" id="modalKeterangan" tabindex="-1">
-    <div class="modal-dialog">
-        <div class="modal-content">
-            <div class="modal-header">
-                <h5 class="modal-title">Update Keterangan</h5>
-                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
-            </div>
-            <div class="modal-body">
-                <input type="hidden" id="presensi_id">
-                <div class="form-check mb-2">
-                    <input class="form-check-input" type="radio" name="keterangan" value="hadir" id="hadir">
-                    <label class="form-check-label" for="hadir">Hadir</label>
-                </div>
-                <div class="form-check mb-2">
-                    <input class="form-check-input" type="radio" name="keterangan" value="izin" id="izin">
-                    <label class="form-check-label" for="izin">Izin</label>
-                </div>
-                <div class="form-check mb-2">
-                    <input class="form-check-input" type="radio" name="keterangan" value="sakit" id="sakit">
-                    <label class="form-check-label" for="sakit">Sakit</label>
-                </div>
-                <div class="form-check">
-                    <input class="form-check-input" type="radio" name="keterangan" value="tanpa_keterangan" id="tanpa_keterangan">
-                    <label class="form-check-label" for="tanpa_keterangan">Tanpa Keterangan</label>
-                </div>
-            </div>
-            <div class="modal-footer">
-                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Batal</button>
-                <button type="button" class="btn btn-primary" onclick="simpanKeterangan()">Simpan</button>
-            </div>
-        </div>
-    </div>
-</div>
-@endsection
-
-@section('scripts')
-<script>
-    $('.scan-input').on('keypress', function(e) {
-        if(e.which === 13) {
-            let rfid = $(this).val().trim();
-            let waktu = $(this).data('waktu');
-            
-            if(rfid) {
-                scanPresensi(rfid, waktu);
-                $(this).val('');
-            }
-        }
-    });
-
-    function scanPresensi(rfid, waktu) {
-        $.ajax({
-            url: '{{ route("presensi.sholat.scan") }}',
-            method: 'POST',
-            data: {
-                rfid_card: rfid,
-                waktu_sholat: waktu
-            },
-            success: function(response) {
-                let alertClass = response.data.presensi.terlambat ? 'alert-warning' : 'alert-success';
                 
-                $(`#result_${waktu}`).html(`
-                    <div class="alert ${alertClass} alert-sm">
-                        <strong>${response.data.user.name}</strong><br>
-                        ${response.message}
-                    </div>
-                `);
-                setTimeout(() => location.reload(), 2000);
+                // Update tabel tanpa reload
+                updateTable({});
+                
+                // Notifikasi
+                alert('Keterangan berhasil diubah!');
             },
             error: function(xhr) {
-                $(`#result_${waktu}`).html(`
-                    <div class="alert alert-danger alert-sm">
-                        ${xhr.responseJSON?.message || 'Terjadi kesalahan'}
-                    </div>
-                `);
+                alert('Terjadi kesalahan: ' + (xhr.responseJSON?.message || 'Unknown error'));
             }
         });
     }
 
-    function updateKeterangan(id) {
-        $('#presensi_id').val(id);
-        $('#modalKeterangan').modal('show');
-    }
-
-    function simpanKeterangan() {
-        let presensiId = $('#presensi_id').val();
-        let keterangan = $('input[name="keterangan"]:checked').val();
-
-        if(!keterangan) {
-            alert('Pilih keterangan terlebih dahulu!');
-            return;
-        }
-
-        $.ajax({
-            url: '{{ route("presensi.sholat.update") }}',
-            method: 'POST',
-            data: {
-                presensi_id: presensiId,
-                keterangan: keterangan
-            },
-            success: function(response) {
-                $('#modalKeterangan').modal('hide');
-                location.reload();
-            },
-            error: function(xhr) {
-                alert('Terjadi kesalahan: ' + xhr.responseJSON?.message);
-            }
-        });
-    }
-
-    // Auto refresh jadwal setiap 60 detik
+    // ============================================
+    // 🔄 AUTO REFRESH JADWAL & TABEL
+    // ============================================
     setInterval(function() {
+        // Refresh jadwal
         $.get('{{ route("presensi.sholat.jadwal") }}', function(response) {
-            if(response.success && response.jadwal) {
-                // Update tampilan jadwal jika diperlukan
-            }
+            // Update jadwal jika diperlukan
         });
-    }, 60000);
-</script>
-</div>
-
-<!-- Modal Update Keterangan -->
-<div class="modal fade" id="modalKeterangan" tabindex="-1">
-    <div class="modal-dialog">
-        <div class="modal-content">
-            <div class="modal-header">
-                <h5 class="modal-title">Update Keterangan</h5>
-                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
-            </div>
-            <div class="modal-body">
-                <input type="hidden" id="presensi_id">
-                <div class="form-check mb-2">
-                    <input class="form-check-input" type="radio" name="keterangan" value="hadir" id="hadir">
-                    <label class="form-check-label" for="hadir">Hadir</label>
-                </div>
-                <div class="form-check mb-2">
-                    <input class="form-check-input" type="radio" name="keterangan" value="izin" id="izin">
-                    <label class="form-check-label" for="izin">Izin</label>
-                </div>
-                <div class="form-check mb-2">
-                    <input class="form-check-input" type="radio" name="keterangan" value="sakit" id="sakit">
-                    <label class="form-check-label" for="sakit">Sakit</label>
-                </div>
-                <div class="form-check">
-                    <input class="form-check-input" type="radio" name="keterangan" value="tanpa_keterangan" id="tanpa_keterangan">
-                    <label class="form-check-label" for="tanpa_keterangan">Tanpa Keterangan</label>
-                </div>
-            </div>
-            <div class="modal-footer">
-                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Batal</button>
-                <button type="button" class="btn btn-primary" onclick="simpanKeterangan()">Simpan</button>
-            </div>
-        </div>
-    </div>
-</div>
-@endsection
-
-@section('scripts')
-<script>
-    $('.scan-input').on('keypress', function(e) {
-        if(e.which === 13) {
-            let rfid = $(this).val().trim();
-            let waktu = $(this).data('waktu');
-            
-            if(rfid) {
-                scanPresensi(rfid, waktu);
-                $(this).val('');
-            }
-        }
-    });
-
-    function scanPresensi(rfid, waktu) {
-        $.ajax({
-            url: '{{ route("presensi.sholat.scan") }}',
-            method: 'POST',
-            data: {
-                rfid_card: rfid,
-                waktu_sholat: waktu
-            },
-            success: function(response) {
-                $(`#result_${waktu}`).html(`
-                    <div class="alert alert-success alert-sm">
-                        <strong>${response.data.user.name}</strong><br>
-                        ${response.message}
-                    </div>
-                `);
-                setTimeout(() => location.reload(), 2000);
-            },
-            error: function(xhr) {
-                $(`#result_${waktu}`).html(`
-                    <div class="alert alert-danger alert-sm">
-                        ${xhr.responseJSON?.message || 'Terjadi kesalahan'}
-                    </div>
-                `);
-            }
-        });
-    }
-
-    function updateKeterangan(id) {
-        $('#presensi_id').val(id);
-        $('#modalKeterangan').modal('show');
-    }
-
-    function simpanKeterangan() {
-        let presensiId = $('#presensi_id').val();
-        let keterangan = $('input[name="keterangan"]:checked').val();
-
-        if(!keterangan) {
-            alert('Pilih keterangan terlebih dahulu!');
-            return;
-        }
-
-        $.ajax({
-            url: '{{ route("presensi.sholat.update") }}',
-            method: 'POST',
-            data: {
-                presensi_id: presensiId,
-                keterangan: keterangan
-            },
-            success: function(response) {
-                $('#modalKeterangan').modal('hide');
-                location.reload();
-            },
-            error: function(xhr) {
-                alert('Terjadi kesalahan: ' + xhr.responseJSON?.message);
-            }
-        });
-    }
-
-    // Auto refresh jadwal setiap 60 detik
-    setInterval(function() {
-        $.get('{{ route("presensi.sholat.jadwal") }}', function(response) {
-            if(response.success && response.jadwal) {
-                // Update tampilan jadwal jika diperlukan
-            }
-        });
-    }, 60000);
+        
+        // Refresh tabel
+        updateTable({});
+    }, 60000); // Refresh setiap 1 menit
 </script>
 @endsection

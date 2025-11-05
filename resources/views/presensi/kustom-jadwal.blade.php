@@ -1,7 +1,34 @@
-<!-- resources/views/presensi/kustom-jadwal.blade.php -->
+<!-- resources/views/presensi/kustom-jadwal.blade.php - FINAL VERSION -->
 @extends('layouts.app')
 
 @section('title', 'Kelola Jadwal Presensi Kustom')
+
+@section('styles')
+<style>
+    .alert-sm {
+        padding: 0.5rem;
+        margin-bottom: 0.5rem;
+        font-size: 0.875rem;
+    }
+    
+    .table-hover tbody tr:hover {
+        background-color: #f8f9fa;
+        cursor: pointer;
+    }
+    
+    .badge {
+        font-size: 0.85rem;
+    }
+    
+    .btn-action {
+        transition: all 0.3s ease;
+    }
+    
+    .btn-action:hover {
+        transform: scale(1.1);
+    }
+</style>
+@endsection
 
 @section('content')
 <div class="container-fluid">
@@ -11,7 +38,7 @@
             <a href="{{ route('presensi.kustom.index') }}" class="btn btn-secondary">
                 <i class="fas fa-arrow-left me-2"></i>Kembali
             </a>
-            <button class="btn btn-primary" data-bs-toggle="modal" data-bs-target="# modalTambah">
+            <button class="btn btn-primary" data-bs-toggle="modal" data-bs-target="#modalTambah">
                 <i class="fas fa-plus me-2"></i>Tambah Jadwal
             </button>
         </div>
@@ -48,10 +75,10 @@
                                 </span>
                             </td>
                             <td>
-                                <button class="btn btn-sm btn-warning" onclick="editJadwal({{ json_encode($j) }})">
+                                <button class="btn btn-sm btn-warning btn-action" onclick="editJadwal({{ json_encode($j) }})">
                                     <i class="fas fa-edit"></i>
                                 </button>
-                                <button class="btn btn-sm btn-danger" onclick="hapusJadwal({{ $j->id }})">
+                                <button class="btn btn-sm btn-danger btn-action" onclick="hapusJadwal({{ $j->id }})">
                                     <i class="fas fa-trash"></i>
                                 </button>
                             </td>
@@ -164,23 +191,118 @@
 
 @section('scripts')
 <script>
+    let csrf_token = '{{ csrf_token() }}';
+
+    // ============================================
+    // 🎵 SOUND EFFECTS
+    // ============================================
+    function playSound(type) {
+        try {
+            const audioContext = new (window.AudioContext || window.webkitAudioContext)();
+            const oscillator = audioContext.createOscillator();
+            const gainNode = audioContext.createGain();
+            
+            oscillator.connect(gainNode);
+            gainNode.connect(audioContext.destination);
+            
+            if (type === 'success') {
+                oscillator.frequency.value = 800;
+                gainNode.gain.value = 0.3;
+                oscillator.start(audioContext.currentTime);
+                oscillator.stop(audioContext.currentTime + 0.1);
+            } else if (type === 'error') {
+                oscillator.frequency.value = 200;
+                gainNode.gain.value = 0.3;
+                oscillator.start(audioContext.currentTime);
+                oscillator.stop(audioContext.currentTime + 0.3);
+            }
+        } catch(e) {
+            console.log('Audio tidak didukung');
+        }
+    }
+
+    // ============================================
+    // 🔔 SHOW TOAST NOTIFICATION
+    // ============================================
+    function showToast(type, message) {
+        let bgClass = type === 'success' ? 'bg-success' : 'bg-danger';
+        let icon = type === 'success' ? 'check-circle' : 'exclamation-circle';
+        
+        $('body').append(`
+            <div class="toast-notification position-fixed top-0 end-0 m-3 ${bgClass} text-white p-3 rounded shadow-lg" style="z-index: 9999; min-width: 300px; animation: slideInRight 0.3s ease-out;">
+                <div class="d-flex align-items-center">
+                    <i class="fas fa-${icon} me-2 fs-5"></i>
+                    <div>${message}</div>
+                </div>
+            </div>
+        `);
+        
+        setTimeout(() => {
+            $('.toast-notification').fadeOut('slow', function() {
+                $(this).remove();
+            });
+        }, 3000);
+    }
+
+    // ============================================
+    // 📊 UPDATE TABLE (TANPA RELOAD)
+    // ============================================
+    function updateTable() {
+        $.ajax({
+            url: '{{ route("presensi.kustom.jadwal.index") }}',
+            method: 'GET',
+            success: function(html) {
+                let newTableBody = $(html).find('.table tbody').html();
+                $('.table tbody').html(newTableBody);
+            }
+        });
+    }
+
+    // ============================================
+    // ➕ TAMBAH JADWAL
+    // ============================================
     $('#formTambah').on('submit', function(e) {
         e.preventDefault();
+        
+        let submitBtn = $(this).find('button[type="submit"]');
+        submitBtn.prop('disabled', true).html('<i class="fas fa-spinner fa-spin me-2"></i>Menyimpan...');
         
         $.ajax({
             url: '{{ route("presensi.kustom.jadwal.store") }}',
             method: 'POST',
-            data: $(this).serialize(),
+            data: $(this).serialize() + '&_token=' + csrf_token,
             success: function(response) {
-                alert(response.message);
-                location.reload();
+                playSound('success');
+                
+                $('#modalTambah').modal('hide');
+                $('#formTambah')[0].reset();
+                
+                showToast('success', response.message);
+                
+                // Update tabel tanpa reload
+                updateTable();
             },
             error: function(xhr) {
-                alert('Terjadi kesalahan: ' + (xhr.responseJSON?.message || 'Unknown error'));
+                playSound('error');
+                
+                let errorMsg = xhr.responseJSON?.message || 'Terjadi kesalahan';
+                
+                if (xhr.responseJSON?.errors) {
+                    let errors = xhr.responseJSON.errors;
+                    errorMsg = Object.values(errors).flat().join('<br>');
+                }
+                
+                showToast('error', errorMsg);
+            },
+            complete: function() {
+                submitBtn.prop('disabled', false).html('Simpan');
             }
         });
     });
 
+    // ============================================
+    // ✏️ EDIT JADWAL
+    // ============================================
     function editJadwal(data) {
         $('#edit_id').val(data.id);
         $('#edit_nama_kegiatan').val(data.nama_kegiatan);
@@ -196,35 +318,92 @@
         e.preventDefault();
         
         let id = $('#edit_id').val();
+        let submitBtn = $(this).find('button[type="submit"]');
+        submitBtn.prop('disabled', true).html('<i class="fas fa-spinner fa-spin me-2"></i>Memperbarui...');
         
         $.ajax({
             url: `/presensi-kustom/jadwal/${id}`,
             method: 'PUT',
-            data: $(this).serialize(),
+            data: $(this).serialize() + '&_token=' + csrf_token,
             success: function(response) {
-                alert(response.message);
-                location.reload();
+                playSound('success');
+                
+                $('#modalEdit').modal('hide');
+                
+                showToast('success', response.message);
+                
+                // Update tabel tanpa reload
+                updateTable();
             },
             error: function(xhr) {
-                alert('Terjadi kesalahan: ' + (xhr.responseJSON?.message || 'Unknown error'));
+                playSound('error');
+                
+                let errorMsg = xhr.responseJSON?.message || 'Terjadi kesalahan';
+                
+                if (xhr.responseJSON?.errors) {
+                    let errors = xhr.responseJSON.errors;
+                    errorMsg = Object.values(errors).flat().join('<br>');
+                }
+                
+                showToast('error', errorMsg);
+            },
+            complete: function() {
+                submitBtn.prop('disabled', false).html('Update');
             }
         });
     });
 
+    // ============================================
+    // 🗑️ HAPUS JADWAL
+    // ============================================
     function hapusJadwal(id) {
-        if(confirm('Yakin ingin menghapus jadwal ini?')) {
+        if(confirm('Yakin ingin menghapus jadwal ini?\n\nPerhatian: Semua data presensi terkait jadwal ini juga akan terhapus!')) {
             $.ajax({
                 url: `/presensi-kustom/jadwal/${id}`,
                 method: 'DELETE',
+                data: {
+                    _token: csrf_token
+                },
                 success: function(response) {
-                    alert(response.message);
-                    location.reload();
+                    playSound('success');
+                    
+                    showToast('success', response.message);
+                    
+                    // Update tabel tanpa reload
+                    updateTable();
                 },
                 error: function(xhr) {
-                    alert('Terjadi kesalahan: ' + (xhr.responseJSON?.message || 'Unknown error'));
+                    playSound('error');
+                    
+                    let errorMsg = xhr.responseJSON?.message || 'Terjadi kesalahan';
+                    showToast('error', errorMsg);
                 }
             });
         }
     }
+
+    // ============================================
+    // 🔄 AUTO CLEAR MODAL ON CLOSE
+    // ============================================
+    $('#modalTambah').on('hidden.bs.modal', function () {
+        $('#formTambah')[0].reset();
+    });
+
+    $('#modalEdit').on('hidden.bs.modal', function () {
+        $('#formEdit')[0].reset();
+    });
 </script>
+
+<style>
+    @keyframes slideInRight {
+        from {
+            opacity: 0;
+            transform: translateX(100px);
+        }
+        to {
+            opacity: 1;
+            transform: translateX(0);
+        }
+    }
+</style>
 @endsection

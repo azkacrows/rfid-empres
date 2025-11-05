@@ -100,86 +100,107 @@ class PresensiKustomController extends Controller
         ]);
     }
 
-    // Scan RFID untuk presensi
-    public function scan(Request $request)
-    {
-        $request->validate([
-            'rfid_card' => 'required|string',
-            'jadwal_id' => 'required|exists:jadwal_presensi_kustom,id',
-        ]);
+// Scan RFID untuk presensi
+public function scan(Request $request)
+{
+    $request->validate([
+        'rfid_card' => 'required|string',
+        'jadwal_id' => 'required|exists:jadwal_presensi_kustom,id',
+    ]);
 
-        $user = User::where('rfid_card', $request->rfid_card)->first();
+    $user = User::where('rfid_card', $request->rfid_card)->first();
 
-        if (!$user) {
-            return response()->json([
-                'success' => false,
-                'message' => 'Kartu RFID tidak terdaftar!'
-            ], 404);
-        }
-
-        $jadwal = JadwalPresensiKustom::findOrFail($request->jadwal_id);
-        
-        // Cek apakah sudah presensi untuk jadwal ini
-        $existing = PresensiKustom::where('user_id', $user->id)
-            ->where('jadwal_id', $jadwal->id)
-            ->whereDate('tanggal', $jadwal->tanggal)
-            ->first();
-
-        if ($existing) {
-            return response()->json([
-                'success' => false,
-                'message' => 'Anda sudah melakukan presensi untuk kegiatan ini!'
-            ]);
-        }
-
-        $jamSekarang = Carbon::now()->format('H:i:s');
-        $jamMulai = Carbon::parse($jadwal->jam_mulai);
-        $jamSelesai = Carbon::parse($jadwal->jam_selesai);
-        $jamScan = Carbon::parse($jamSekarang);
-
-        // Tentukan status dan keterlambatan
-        $status = 'tanpa_keterangan';
-        $terlambat = false;
-        $menitTerlambat = 0;
-
-        if ($jamScan->between($jamMulai, $jamSelesai)) {
-            $status = 'hadir';
-        } elseif ($jamScan->greaterThan($jamSelesai)) {
-            $status = 'terlambat';
-            $terlambat = true;
-            $menitTerlambat = $jamScan->diffInMinutes($jamMulai);
-        }
-
-        $presensi = PresensiKustom::create([
-            'user_id' => $user->id,
-            'jadwal_id' => $jadwal->id,
-            'tanggal' => $jadwal->tanggal,
-            'jam_mulai' => $jadwal->jam_mulai,
-            'jam_selesai' => $jadwal->jam_selesai,
-            'jam_scan' => $jamSekarang,
-            'kepentingan' => $jadwal->nama_kegiatan,
-            'status' => $status,
-            'terlambat' => $terlambat,
-            'menit_terlambat' => $menitTerlambat,
-            'keterangan' => $status
-        ]);
-
-        $pesan = $status === 'hadir' 
-            ? "Presensi berhasil!" 
-            : ($status === 'terlambat' 
-                ? "Presensi berhasil! Terlambat {$menitTerlambat} menit" 
-                : "Presensi tercatat tanpa keterangan");
-
+    if (!$user) {
         return response()->json([
-            'success' => true,
-            'message' => $pesan,
+            'success' => false,
+            'message' => 'Kartu RFID tidak terdaftar!',
+            'data' => null
+        ], 404);
+    }
+
+    $jadwal = JadwalPresensiKustom::findOrFail($request->jadwal_id);
+    
+    // Cek apakah sudah presensi untuk jadwal ini
+    $existing = PresensiKustom::where('user_id', $user->id)
+        ->where('jadwal_id', $jadwal->id)
+        ->whereDate('tanggal', $jadwal->tanggal)
+        ->first();
+
+    if ($existing) {
+        return response()->json([
+            'success' => false,
+            'message' => 'Anda sudah melakukan presensi untuk kegiatan ini!',
             'data' => [
                 'user' => $user,
-                'presensi' => $presensi,
-                'jadwal' => $jadwal
+                'presensi' => $existing
             ]
-        ]);
+        ], 400);
     }
+
+    $jamSekarang = Carbon::now()->format('H:i:s');
+    $jamMulai = Carbon::parse($jadwal->jam_mulai);
+    $jamSelesai = Carbon::parse($jadwal->jam_selesai);
+    $jamScan = Carbon::parse($jamSekarang);
+
+    // ✅ FIX: Logic Status dan Keterangan yang benar
+    $status = 'tanpa_keterangan';
+    $keterangan = 'tanpa_keterangan';
+    $terlambat = false;
+    $menitTerlambat = 0;
+
+    // Cek apakah scan dalam rentang waktu kegiatan
+    if ($jamScan->between($jamMulai, $jamSelesai)) {
+        // Scan tepat waktu
+        $status = 'hadir';
+        $keterangan = 'hadir';
+        $terlambat = false;
+    } elseif ($jamScan->greaterThan($jamSelesai)) {
+        // Scan setelah jam selesai = terlambat
+        $status = 'terlambat';
+        $keterangan = 'hadir'; // Tetap hadir tapi terlambat
+        $terlambat = true;
+        $menitTerlambat = $jamScan->diffInMinutes($jamSelesai);
+    } else {
+        // Scan sebelum jam mulai = tanpa keterangan
+        $status = 'tanpa_keterangan';
+        $keterangan = 'tanpa_keterangan';
+        $terlambat = false;
+    }
+
+    $presensi = PresensiKustom::create([
+        'user_id' => $user->id,
+        'jadwal_id' => $jadwal->id,
+        'tanggal' => $jadwal->tanggal,
+        'jam_mulai' => $jadwal->jam_mulai,
+        'jam_selesai' => $jadwal->jam_selesai,
+        'jam_scan' => $jamSekarang,
+        'kepentingan' => $jadwal->nama_kegiatan,
+        'status' => $status,
+        'terlambat' => $terlambat,
+        'menit_terlambat' => $menitTerlambat,
+        'keterangan' => $keterangan
+    ]);
+
+    // Pesan yang lebih jelas
+    $pesan = '';
+    if ($status === 'hadir' && !$terlambat) {
+        $pesan = "Presensi berhasil! Tepat waktu ✓";
+    } elseif ($status === 'terlambat') {
+        $pesan = "Presensi berhasil! Terlambat {$menitTerlambat} menit ⚠️";
+    } else {
+        $pesan = "Presensi tercatat (scan terlalu awal)";
+    }
+
+    return response()->json([
+        'success' => true,
+        'message' => $pesan,
+        'data' => [
+            'user' => $user,
+            'presensi' => $presensi,
+            'jadwal' => $jadwal
+        ]
+    ]);
+}
 
     // Update keterangan manual
     public function updateKeterangan(Request $request)
@@ -198,4 +219,75 @@ class PresensiKustomController extends Controller
             'message' => 'Keterangan berhasil diperbarui!'
         ]);
     }
+
+    // 🆕 AJAX: Get latest presensi untuk update tabel tanpa reload
+    public function getLatestPresensi(Request $request)
+    {
+        $today = Carbon::today();
+        
+        $presensi = PresensiKustom::with('user', 'jadwal')
+            ->whereDate('tanggal', $today)
+            ->latest()
+            ->paginate(20);
+        
+        return response()->json([
+            'success' => true,
+            'data' => $presensi
+        ]);
+    }
+
+    // 🆕 AJAX: Get stats untuk dashboard
+    public function getStats(Request $request)
+    {
+        $today = Carbon::today();
+        
+        $totalHadir = PresensiKustom::whereDate('tanggal', $today)
+            ->where('status', 'hadir')
+            ->count();
+        
+        $totalTerlambat = PresensiKustom::whereDate('tanggal', $today)
+            ->where('terlambat', true)
+            ->count();
+        
+        $totalPresensi = PresensiKustom::whereDate('tanggal', $today)->count();
+        
+        return response()->json([
+            'success' => true,
+            'data' => [
+                'total_hadir' => $totalHadir,
+                'total_terlambat' => $totalTerlambat,
+                'total_presensi' => $totalPresensi
+            ]
+        ]);
+    }
+    // Get daftar santri yang belum presensi per jadwal
+public function getBelumPresensi(Request $request, $jadwalId)
+{
+    $jadwal = JadwalPresensiKustom::findOrFail($jadwalId);
+    
+    // Ambil semua user dengan role 'user' (santri)
+    $allUsers = User::where('role', 'user')->get();
+    
+    // Ambil yang sudah presensi
+    $sudahPresensi = PresensiKustom::where('jadwal_id', $jadwalId)
+        ->whereDate('tanggal', $jadwal->tanggal)
+        ->pluck('user_id')
+        ->toArray();
+    
+    // Filter yang belum presensi
+    $belumPresensi = $allUsers->filter(function($user) use ($sudahPresensi) {
+        return !in_array($user->id, $sudahPresensi);
+    });
+    
+    return response()->json([
+        'success' => true,
+        'data' => [
+            'jadwal' => $jadwal,
+            'belum_presensi' => $belumPresensi->values(),
+            'total_belum' => $belumPresensi->count(),
+            'total_sudah' => count($sudahPresensi),
+            'total_santri' => $allUsers->count()
+        ]
+    ]);
+}
 }

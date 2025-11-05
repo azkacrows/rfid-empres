@@ -30,5 +30,11 @@ return [
         'secret' => env('AWS_SECRET_ACCESS_KEY'),
         'region' => env('AWS_DEFAULT_REGION', 'us-east-1'),
     ],
-
+    
+    
+    'jadwal_sholat' => [
+        'kota_id' => env('JADWAL_SHOLAT_KOTA_ID', 1635),
+        'kota_nama' => env('JADWAL_SHOLAT_KOTA_NAMA', 'Mojokerto'),
+    ],
 ];
+

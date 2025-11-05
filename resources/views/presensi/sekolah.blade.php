@@ -61,6 +61,7 @@
         </div>
     </div>
 
+    <!-- TABEL PRESENSI HARI INI (FITUR LAMA - TIDAK DIUBAH) -->
     <div class="card mt-4">
         <div class="card-header bg-white">
             <h5 class="mb-0"><i class="fas fa-list me-2"></i>Daftar Presensi Hari Ini</h5>
@@ -137,6 +138,45 @@
             {{ $presensi->links() }}
         </div>
     </div>
+
+    <!-- ==================== TAMBAHAN FITUR BARU: SISWA YANG BELUM PRESENSI ==================== -->
+ <!-- ==================== TAMBAHAN FITUR BARU: SISWA YANG BELUM PRESENSI ==================== -->
+@if(isset($siswaBelumPresensi) && $siswaBelumPresensi->count() > 0)
+<div class="card mt-4">
+    <div class="card-header bg-danger text-white">
+        <h5 class="mb-0"><i class="fas fa-user-times me-2"></i>Siswa yang Belum Presensi Hari Ini</h5>
+    </div>
+    <div class="card-body">
+        <div class="table-responsive">
+            <table class="table table-hover table-bordered">
+                <thead>
+                    <tr>
+                        <th>No</th>
+                        <th>Nama</th>
+                        <th>Status</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    @foreach($siswaBelumPresensi as $key => $siswa)
+                    <tr>
+                        <td>{{ $key + 1 }}</td>
+                        <td>{{ $siswa->name }}</td>
+                        <td>
+                            <span class="badge bg-danger">
+                                <i class="fas fa-times"></i> Belum Presensi
+                            </span>
+                        </td>
+                    </tr>
+                    @endforeach
+                </tbody>
+            </table>
+        </div>
+    </div>
+</div>
+@endif
+<!-- ==================== AKHIR TAMBAHAN FITUR BARU ==================== -->
+    <!-- ==================== AKHIR TAMBAHAN FITUR BARU ==================== -->
+
 </div>
 
 <!-- Modal Update Keterangan -->
@@ -191,126 +231,6 @@
                 
                 $(resultDiv).html(`
                     <div class="alert ${alertClass}">
-                        <h5>${response.data.user.name}</h5>
-                        <p class="mb-0">${response.message}</p>
-                    </div>
-                `);
-                setTimeout(() => location.reload(), 2000);
-            },
-            error: function(xhr) {
-                let resultDiv = jenis === 'masuk' ? '#result_masuk' : '#result_keluar';
-                $(resultDiv).html(`
-                    <div class="alert alert-danger">
-                        ${xhr.responseJSON?.message || 'Terjadi kesalahan'}
-                    </div>
-                `);
-            }
-        });
-    }
-
-    $('#rfid_masuk').on('keypress', function(e) {
-        if(e.which === 13) {
-            let rfid = $(this).val().trim();
-            if(rfid) {
-                scanPresensi(rfid, 'masuk');
-                $(this).val('');
-            }
-        }
-    });
-
-    $('#rfid_keluar').on('keypress', function(e) {
-        if(e.which === 13) {
-            let rfid = $(this).val().trim();
-            if(rfid) {
-                scanPresensi(rfid, 'keluar');
-                $(this).val('');
-            }
-        }
-    });
-
-    function updateKeterangan(id) {
-        $('#presensi_id').val(id);
-        $('#modalKeterangan').modal('show');
-    }
-
-    function simpanKeterangan() {
-        let presensiId = $('#presensi_id').val();
-        let keterangan = $('input[name="keterangan"]:checked').val();
-
-        if(!keterangan) {
-            alert('Pilih keterangan terlebih dahulu!');
-            return;
-        }
-
-        $.ajax({
-            url: '{{ route("presensi.sekolah.update") }}',
-            method: 'POST',
-            data: {
-                presensi_id: presensiId,
-                keterangan: keterangan
-            },
-            success: function(response) {
-                $('#modalKeterangan').modal('hide');
-                location.reload();
-            },
-            error: function(xhr) {
-                alert('Terjadi kesalahan: ' + xhr.responseJSON?.message);
-            }
-        });
-    }
-</script>
-</div>
-
-<!-- Modal Update Keterangan -->
-<div class="modal fade" id="modalKeterangan" tabindex="-1">
-    <div class="modal-dialog">
-        <div class="modal-content">
-            <div class="modal-header">
-                <h5 class="modal-title">Update Keterangan</h5>
-                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
-            </div>
-            <div class="modal-body">
-                <input type="hidden" id="presensi_id">
-                <div class="form-check mb-2">
-                    <input class="form-check-input" type="radio" name="keterangan" value="hadir" id="hadir">
-                    <label class="form-check-label" for="hadir">Hadir</label>
-                </div>
-                <div class="form-check mb-2">
-                    <input class="form-check-input" type="radio" name="keterangan" value="izin" id="izin">
-                    <label class="form-check-label" for="izin">Izin</label>
-                </div>
-                <div class="form-check mb-2">
-                    <input class="form-check-input" type="radio" name="keterangan" value="sakit" id="sakit">
-                    <label class="form-check-label" for="sakit">Sakit</label>
-                </div>
-                <div class="form-check">
-                    <input class="form-check-input" type="radio" name="keterangan" value="tanpa_keterangan" id="tanpa_keterangan">
-                    <label class="form-check-label" for="tanpa_keterangan">Tanpa Keterangan</label>
-                </div>
-            </div>
-            <div class="modal-footer">
-                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Batal</button>
-                <button type="button" class="btn btn-primary" onclick="simpanKeterangan()">Simpan</button>
-            </div>
-        </div>
-    </div>
-</div>
-@endsection
-
-@section('scripts')
-<script>
-    function scanPresensi(rfid, jenis) {
-        $.ajax({
-            url: '{{ route("presensi.sekolah.scan") }}',
-            method: 'POST',
-            data: {
-                rfid_card: rfid,
-                jenis: jenis
-            },
-            success: function(response) {
-                let resultDiv = jenis === 'masuk' ? '#result_masuk' : '#result_keluar';
-                $(resultDiv).html(`
-                    <div class="alert alert-success">
                         <h5>${response.data.user.name}</h5>
                         <p class="mb-0">${response.message}</p>
                     </div>

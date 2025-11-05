@@ -30,30 +30,40 @@ Route::middleware(['auth'])->group(function () {
     });
     
     // Presensi Sholat
+    // Presensi Sholat Routes (gunakan prefix presensi-sholat)
     Route::prefix('presensi-sholat')->name('presensi.sholat.')->group(function () {
         Route::get('/', [PresensiSholatController::class, 'index'])->name('index');
         Route::post('/scan', [PresensiSholatController::class, 'scan'])->name('scan');
         Route::post('/update-keterangan', [PresensiSholatController::class, 'updateKeterangan'])->name('update');
         Route::get('/jadwal', [PresensiSholatController::class, 'getJadwal'])->name('jadwal');
+        Route::get('/latest', [PresensiSholatController::class, 'getLatestPresensi'])->name('latest');
+        
+        // Export (opsional)
+        Route::get('/export', [PresensiSholatController::class, 'export'])->name('export');
     });
     
     // Presensi Kustom
-    Route::prefix('presensi-kustom')->name('presensi.kustom.')->group(function () {
+            Route::prefix('presensi-kustom')->name('presensi.kustom.')->group(function () {
         Route::get('/', [PresensiKustomController::class, 'index'])->name('index');
         Route::post('/scan', [PresensiKustomController::class, 'scan'])->name('scan');
         Route::post('/update-keterangan', [PresensiKustomController::class, 'updateKeterangan'])->name('update');
         
-        // Kelola Jadwal (Admin)
-        Route::middleware(['admin'])->group(function () {
-            Route::get('/jadwal', [PresensiKustomController::class, 'jadwalIndex'])->name('jadwal.index');
-            Route::post('/jadwal', [PresensiKustomController::class, 'storeJadwal'])->name('jadwal.store');
-            Route::put('/jadwal/{id}', [PresensiKustomController::class, 'updateJadwal'])->name('jadwal.update');
-            Route::delete('/jadwal/{id}', [PresensiKustomController::class, 'destroyJadwal'])->name('jadwal.destroy');
+        // AJAX Routes
+        Route::get('/latest', [PresensiKustomController::class, 'getLatestPresensi'])->name('latest');
+        Route::get('/stats', [PresensiKustomController::class, 'getStats'])->name('stats');
+        Route::get('/belum-presensi/{jadwalId}', [PresensiKustomController::class, 'getBelumPresensi'])->name('belum.presensi'); // 🆕
+        
+        // Kelola Jadwal (Admin only)
+        Route::middleware(['admin'])->prefix('jadwal')->name('jadwal.')->group(function () {
+            Route::get('/', [PresensiKustomController::class, 'jadwalIndex'])->name('index');
+            Route::post('/', [PresensiKustomController::class, 'storeJadwal'])->name('store');
+            Route::put('/{id}', [PresensiKustomController::class, 'updateJadwal'])->name('update');
+            Route::delete('/{id}', [PresensiKustomController::class, 'destroyJadwal'])->name('destroy');
         });
     });
     
     // E-Kantin
-    Route::prefix('kantin')->name('kantin.')->group(function () {
+        Route::prefix('kantin')->name('kantin.')->group(function () {
         Route::get('/cek-saldo', [KantinController::class, 'cekSaldo'])->name('cek-saldo');
         Route::post('/scan-saldo', [KantinController::class, 'scanSaldo'])->name('scan-saldo');
         Route::get('/topup', [KantinController::class, 'topup'])->name('topup');
@@ -65,7 +75,7 @@ Route::middleware(['auth'])->group(function () {
     });
     
     // User Management (Admin)
-    Route::middleware(['admin'])->prefix('users')->name('users.')->group(function () {
+        Route::middleware(['admin'])->prefix('users')->name('users.')->group(function () {
         Route::get('/', [UserController::class, 'index'])->name('index');
         Route::get('/create', [UserController::class, 'create'])->name('create');
         Route::post('/', [UserController::class, 'store'])->name('store');
@@ -74,11 +84,14 @@ Route::middleware(['auth'])->group(function () {
         Route::delete('/{user}', [UserController::class, 'destroy'])->name('destroy');
     });
     
-    // Jadwal Sholat Sync (Admin)
+    // Jadwal Sholat Management (Admin)
     Route::middleware(['admin'])->prefix('jadwal-sholat')->name('jadwal-sholat.')->group(function () {
-        Route::get('/', [JadwalSholatController::class, 'index'])->name('index');
-        Route::post('/sync', [JadwalSholatController::class, 'syncJadwal'])->name('sync');
-    });
+    Route::get('/', [JadwalSholatController::class, 'index'])->name('index');
+    Route::post('/sync', [JadwalSholatController::class, 'syncJadwal'])->name('sync');
+    Route::post('/bulk-override', [JadwalSholatController::class, 'bulkOverride'])->name('bulk-override');
+    Route::put('/{id}', [JadwalSholatController::class, 'update'])->name('update');
+    Route::delete('/{id}', [JadwalSholatController::class, 'destroy'])->name('destroy');
+});
 
     // Pengaturan Waktu (Admin)
     Route::middleware(['admin'])->prefix('pengaturan-waktu')->name('pengaturan.waktu.')->group(function () {
