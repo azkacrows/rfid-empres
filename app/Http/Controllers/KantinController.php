@@ -191,20 +191,45 @@ class KantinController extends Controller
         return view('kantin.riwayat', compact('transaksi'));
     }
 
-    public function toggleLimit(Request $request)
-    {
+public function toggleLimit(Request $request)
+{
+    try {
         $request->validate([
             'user_id' => 'required|exists:users,id',
-            'status' => 'required|boolean'
+            'status' => 'required|in:0,1,true,false' // ✅ Terima string/int
         ]);
 
         $user = User::findOrFail($request->user_id);
-        $user->limit_saldo_aktif = $request->status;
+        
+        // Convert to boolean
+        $status = filter_var($request->status, FILTER_VALIDATE_BOOLEAN);
+        $user->limit_saldo_aktif = $status;
         $user->save();
 
         return response()->json([
             'success' => true,
-            'message' => 'Status limit berhasil diubah!'
+            'message' => $status 
+                ? '✅ Limit saldo berhasil diaktifkan!' 
+                : '✅ Limit saldo berhasil dinonaktifkan!'
         ]);
+
+    } catch (\Illuminate\Validation\ValidationException $e) {
+        return response()->json([
+            'success' => false,
+            'message' => 'Data tidak valid: ' . $e->getMessage()
+        ], 422);
+        
+    } catch (\Exception $e) {
+        \Log::error('Toggle limit error', [
+            'error' => $e->getMessage(),
+            'user_id' => $request->user_id,
+            'status' => $request->status
+        ]);
+        
+        return response()->json([
+            'success' => false,
+            'message' => 'Gagal mengubah status limit'
+        ], 500);
     }
+}
 }
