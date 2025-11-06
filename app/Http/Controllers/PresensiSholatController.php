@@ -31,79 +31,104 @@ class PresensiSholatController extends Controller
         return view('presensi.sholat', compact('presensi', 'jadwal', 'toleransi', 'hari', 'tanggal'));
     }
 
-    public function scan(Request $request)
-    {
-        $request->validate([
-            'rfid_card' => 'required|string',
-            'waktu_sholat' => 'required|in:subuh,dzuhur,ashar,maghrib,isya',
-        ]);
+public function scan(Request $request)
+{
+    $request->validate([
+        'rfid_card' => 'required|string',
+        'waktu_sholat' => 'required|in:subuh,dzuhur,ashar,maghrib,isya',
+    ]);
 
-        $user = User::where('rfid_card', $request->rfid_card)->first();
+    $user = User::where('rfid_card', $request->rfid_card)->first();
 
-        if (!$user) {
-            return response()->json([
-                'success' => false,
-                'message' => 'Kartu RFID tidak terdaftar!'
-            ], 404);
-        }
-
-        $today = Carbon::today();
-        $jamSekarang = Carbon::now()->format('H:i:s');
-        
-        $existing = PresensiSholat::where('user_id', $user->id)
-            ->whereDate('tanggal', $today)
-            ->where('waktu_sholat', $request->waktu_sholat)
-            ->first();
-
-        if ($existing) {
-            return response()->json([
-                'success' => false,
-                'message' => 'Anda sudah melakukan presensi sholat ' . ucfirst($request->waktu_sholat) . ' hari ini!',
-                'data' => [
-                    'user' => $user,
-                    'presensi' => $existing
-                ]
-            ], 400);
-        }
-
-        // Ambil jadwal sholat
-        $jadwal = JadwalSholat::whereDate('tanggal', $today)->first();
-        if (!$jadwal) {
-            return response()->json([
-                'success' => false,
-                'message' => 'Jadwal sholat hari ini belum tersedia!'
-            ], 404);
-        }
-
-        $jamAdzan = $jadwal->{$request->waktu_sholat};
-        
-        // Hitung keterlambatan
-        $keterlambatan = PresensiSholat::hitungKeterlambatan($jamAdzan, $jamSekarang);
-
-        $presensi = PresensiSholat::create([
-            'user_id' => $user->id,
-            'tanggal' => $today,
-            'waktu_sholat' => $request->waktu_sholat,
-            'jam_presensi' => $jamSekarang,
-            'keterangan' => 'hadir',
-            'terlambat' => $keterlambatan['terlambat'],
-            'menit_terlambat' => $keterlambatan['menit']
-        ]);
-
-        $pesan = $keterlambatan['terlambat'] 
-            ? "Presensi berhasil! Terlambat {$keterlambatan['menit']} menit dari adzan" 
-            : "Presensi sholat berhasil!";
-
+    if (!$user) {
         return response()->json([
-            'success' => true,
-            'message' => $pesan,
-            'data' => [
-                'user' => $user,
-                'presensi' => $presensi
-            ]
-        ]);
+            'success' => false,
+            'message' => 'Kartu RFID tidak terdaftar!'
+        ], 404);
     }
 
+    $today = Carbon::today();
+    $jamSekarang = Carbon::now()->format('H:i:s');
+    
+    $existing = PresensiSholat::where('user_id', $user->id)
+        ->whereDate('tanggal', $today)
+        ->where('waktu_sholat', $request->waktu_sholat)
+        ->first();
+
+    if ($existing) {
+        return response()->json([
+            'success' => false,
+            'message' => 'Anda sudah melakukan presensi sholat ' . ucfirst($request->waktu_sholat) . ' hari ini!',
+            'data' => [
+                'user' => $user,
+                'presensi' => $existing
+            ]
+        ], 400);
+    }
+
+    // Ambil jadwal sholat
+    $jadwal = JadwalSholat::whereDate('tanggal', $today)->first();
+    if (!$jadwal) {
+        return response()->json([
+            'success' => false,
+            'message' => 'Jadwal sholat hari ini belum tersedia!'
+        ], 404);
+    }
+
+    $jamAdzan = $jadwal->{$request->waktu_sholat};
+    
+    // Hitung keterlambatan
+    $keterlambatan = PresensiSholat::hitungKeterlambatan($jamAdzan, $jamSekarang);
+
+    // ✅ LOG UNTUK DEBUG
+    \Log::info('🎯 HASIL KETERLAMBATAN:', [
+        'user' => $user->name,
+        'waktu_sholat' => $request->waktu_sholat,
+        'jam_adzan' => $jamAdzan,
+        'jam_presensi' => $jamSekarang,
+        'keterlambatan' => $keterlambatan
+    ]);
+
+    $presensi = PresensiSholat::create([
+        'user_id' => $user->id,
+        'tanggal' => $today,
+        'waktu_sholat' => $request->waktu_sholat,
+        'jam_presensi' => $jamSekarang,
+        'keterangan' => 'hadir',
+        'terlambat' => $keterlambatan['terlambat'],
+        'menit_terlambat' => $keterlambatan['menit']
+    ]);
+
+    // ✅ FIXED: Tentukan pesan dan alert berdasarkan status
+    $status = $keterlambatan['status'];
+    $pesan = '';
+    $alertType = 'success'; // default
+    
+    if ($status === 'terlalu_awal') {
+        $pesan = "Presensi berhasil! Anda datang " . abs($keterlambatan['selisih_menit']) . " menit sebelum adzan.";
+        $alertType = 'info'; // biru
+    } elseif ($status === 'tepat_waktu') {
+        $pesan = "Presensi sholat berhasil! Tepat waktu.";
+        $alertType = 'success'; // hijau
+    } elseif ($status === 'terlambat') {
+        $pesan = "Presensi berhasil! Terlambat {$keterlambatan['menit']} menit dari adzan.";
+        $alertType = 'danger'; // merah
+    } else {
+        $pesan = "Presensi sholat berhasil!";
+        $alertType = 'success';
+    }
+
+    return response()->json([
+        'success' => true,
+        'message' => $pesan,
+        'alert_type' => $alertType, // ✅ TAMBAHKAN INI
+        'data' => [
+            'user' => $user,
+            'presensi' => $presensi,
+            'keterlambatan' => $keterlambatan
+        ]
+    ]);
+}
     // ✅ GANTI METHOD NAME
     public function update(Request $request)
     {
