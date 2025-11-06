@@ -237,21 +237,41 @@
                                 @endif
                             </td>
                             <td>
-                                {{ $p->jam_keluar ?? '-' }}
-                                @if($p->terlambat_keluar && $p->menit_terlambat_keluar)
-                                    <br><small class="text-danger"><i class="fas fa-exclamation-circle"></i> +{{ $p->menit_terlambat_keluar }} menit</small>
-                                @endif
-                            </td>
-                            <td>
-                                @if($p->jam_keluar)
-                                    <span class="badge {{ $p->terlambat_keluar ? 'badge-terlambat' : 'badge-ontime' }}">
-                                        <i class="fas {{ $p->terlambat_keluar ? 'fa-exclamation-triangle' : 'fa-check-circle' }}"></i>
-                                        {{ $p->terlambat_keluar ? 'Terlambat' : 'Tepat Waktu' }}
-                                    </span>
-                                @else
-                                    <span class="text-muted">-</span>
-                                @endif
-                            </td>
+<td>
+    @if($p->jam_keluar)
+        @php
+            $statusKeluar = 'normal';
+            $pengaturanPulang = \App\Models\PengaturanWaktu::getSekolahPulang();
+            
+            if ($pengaturanPulang) {
+                $jamKeluar = \Carbon\Carbon::createFromFormat('H:i:s', $p->jam_keluar);
+                $jamMulaiPulang = \Carbon\Carbon::createFromFormat('H:i:s', $pengaturanPulang->jam_mulai);
+                
+                if ($jamKeluar->lt($jamMulaiPulang)) {
+                    $statusKeluar = 'pulang_cepat';
+                    $menitCepat = $jamMulaiPulang->diffInMinutes($jamKeluar);
+                }
+            }
+        @endphp
+        
+        @if($statusKeluar === 'pulang_cepat')
+            {{-- 🔴 PULANG CEPAT = MERAH --}}
+            <span class="badge" style="background: linear-gradient(135deg, #fa709a 0%, #fee140 100%); color: white; padding: 5px 12px; border-radius: 20px;">
+                <i class="fas fa-exclamation-triangle"></i> Pulang Cepat
+            </span>
+            <br><small class="text-danger">
+                <i class="fas fa-clock"></i> -{{ $menitCepat }} menit
+            </small>
+        @else
+            {{-- ✅ NORMAL = HIJAU --}}
+            <span class="badge badge-ontime">
+                <i class="fas fa-check-circle"></i> Tepat Waktu
+            </span>
+        @endif
+    @else
+        <span class="text-muted">-</span>
+    @endif
+</td>
                             <td>
                                 <span class="badge bg-{{ $p->keterangan == 'hadir' ? 'success' : ($p->keterangan == 'izin' ? 'info' : ($p->keterangan == 'sakit' ? 'warning' : 'secondary')) }}">
                                     {{ ucfirst(str_replace('_', ' ', $p->keterangan)) }}
@@ -371,6 +391,10 @@
 
 @section('scripts')
 <script>
+    // ✅ TEST: Cek jQuery loaded
+    console.log('jQuery Version:', $.fn.jquery);
+    console.log('Page Ready!');
+
     // Setup CSRF Token
     $.ajaxSetup({
         headers: {
@@ -388,6 +412,7 @@
     function resetFocus() {
         setTimeout(() => {
             $('#rfid_masuk').focus();
+            console.log('Focus reset to RFID Masuk');
         }, 100);
     }
 
@@ -409,6 +434,8 @@
     }
 
     function scanPresensi(rfid, jenis) {
+        console.log('🔍 Scanning:', rfid, 'Jenis:', jenis);
+        
         let resultDiv = jenis === 'masuk' ? '#result_masuk' : '#result_keluar';
         
         // Show loading
@@ -426,9 +453,8 @@
                 jenis: jenis
             },
             success: function(response) {
-                console.log('✅ Response:', response); // Debug
+                console.log('✅ Response:', response);
                 
-                // ✅ DEFENSIVE: Cek data ada atau tidak
                 if (!response.data || !response.data.user) {
                     $(resultDiv).html(`
                         <div class="alert alert-warning shadow-sm border-0">
@@ -444,22 +470,35 @@
                     return;
                 }
 
-                // Ambil data dengan aman
                 let userData = response.data.user;
                 let presensiData = response.data.presensi || {};
                 
-                let terlambat = presensiData.terlambat_masuk || presensiData.terlambat_keluar || false;
-                let menitTerlambat = presensiData.menit_terlambat_masuk || presensiData.menit_terlambat_keluar || 0;
+                // CEK PULANG CEPAT dari message
+                let isPulangCepat = response.message.includes('lebih awal');
                 
-                let alertClass = terlambat ? 'alert-warning' : 'alert-success';
-                let icon = terlambat ? 'fa-exclamation-triangle' : 'fa-check-circle';
+                // HANYA CEK terlambat MASUK
+                let terlambat = presensiData.terlambat_masuk || false;
+                let menitTerlambat = presensiData.menit_terlambat_masuk || 0;
                 
-                // Tampilkan notifikasi sukses
+                // Tentukan warna notifikasi
+                let alertClass = 'alert-success';
+                let icon = 'fa-check-circle';
+                let title = '✅ Berhasil!';
+                
+                if (isPulangCepat) {
+                    alertClass = 'alert-danger';
+                    icon = 'fa-exclamation-triangle';
+                    title = '🔴 Pulang Terlalu Cepat!';
+                } else if (terlambat) {
+                    alertClass = 'alert-warning';
+                    icon = 'fa-exclamation-triangle';
+                    title = '⚠️ Terlambat!';
+                }
+                
                 $(resultDiv).html(`
                     <div class="alert ${alertClass} shadow-sm border-0" style="animation: slideInRight 0.3s ease-out;">
                         <h5 class="alert-heading mb-3">
-                            <i class="fas ${icon} me-2"></i>
-                            ${terlambat ? '⚠️ Terlambat!' : '✅ Berhasil!'}
+                            <i class="fas ${icon} me-2"></i>${title}
                         </h5>
                         <div class="d-flex align-items-center mb-2">
                             <div class="rounded-circle bg-white p-2 me-3" style="width: 50px; height: 50px; display: flex; align-items: center; justify-content: center;">
@@ -478,7 +517,6 @@
                     </div>
                 `);
 
-                // Refresh tabel
                 refreshTabelPresensi();
                 resetFocus();
             },
@@ -490,21 +528,17 @@
                 let errorIcon = 'fa-exclamation-circle';
                 let errorTitle = '❌ Error!';
                 
-                // ✅ DEFENSIVE: Cek xhr.responseJSON ada atau tidak
                 let responseData = xhr.responseJSON || {};
 
-                // Handle error berdasarkan status
                 if (xhr.status === 404) {
                     errorMessage = 'RFID Card tidak terdaftar dalam sistem!';
                     errorIcon = 'fa-user-times';
                     errorTitle = '🚫 Tidak Ditemukan';
                 } else if (xhr.status === 400) {
-                    // ✅ Ambil message dari response
                     errorMessage = responseData.message || 'Anda sudah melakukan presensi!';
                     errorIcon = 'fa-exclamation-triangle';
                     errorTitle = '⚠️ Peringatan';
                     
-                    // ✅ Cek apakah ada data user untuk ditampilkan
                     if (responseData.data && responseData.data.user) {
                         let userData = responseData.data.user;
                         $(resultDiv).html(`
@@ -542,7 +576,6 @@
                     errorMessage = responseData.message;
                 }
 
-                // Tampilkan notifikasi error standard
                 $(resultDiv).html(`
                     <div class="alert alert-danger shadow-sm border-0" style="animation: shake 0.5s ease-out;">
                         <h5 class="alert-heading mb-3">
@@ -565,9 +598,13 @@
 
     // Event handler untuk input RFID Masuk
     $('#rfid_masuk').on('keypress', function(e) {
+        console.log('🔍 Keypress detected:', e.which);
+        
         if(e.which === 13) {
             e.preventDefault();
             let rfid = $(this).val().trim();
+            
+            console.log('✅ Enter pressed! RFID:', rfid);
             
             if(rfid) {
                 scanPresensi(rfid, 'masuk');
@@ -585,9 +622,13 @@
 
     // Event handler untuk input RFID Keluar
     $('#rfid_keluar').on('keypress', function(e) {
+        console.log('🔍 Keypress Keluar detected:', e.which);
+        
         if(e.which === 13) {
             e.preventDefault();
             let rfid = $(this).val().trim();
+            
+            console.log('✅ Enter pressed! RFID:', rfid);
             
             if(rfid) {
                 scanPresensi(rfid, 'keluar');
@@ -643,7 +684,6 @@
         });
     }
 
-    // Function untuk tampilkan toast
     function showToast(type, title, message) {
         let bgClass = type === 'success' ? 'bg-success' : 'bg-danger';
         let icon = type === 'success' ? 'fa-check-circle' : 'fa-exclamation-triangle';
@@ -667,7 +707,10 @@
 
     // Auto-focus saat halaman dimuat
     $(document).ready(function() {
+        console.log('✅ Document Ready!');
+        
         resetFocus();
+        
         $('#modalKeterangan').on('hidden.bs.modal', () => resetFocus());
     });
 </script>

@@ -78,24 +78,40 @@ class PresensiSekolahController extends Controller
                 ? "Presensi masuk berhasil! Terlambat {$keterlambatan['menit']} menit" 
                 : "Presensi masuk berhasil!";
                 
-        } else {
-            if ($presensi->jam_keluar) {
-                return response()->json([
-                    'success' => false,
-                    'message' => 'Anda sudah melakukan presensi keluar hari ini!'
-                ]);
-            }
-            
-            $presensi->jam_keluar = $jamSekarang;
-            
-            $keterlambatan = PresensiSekolah::hitungKeterlambatanKeluar($jamSekarang);
-            $presensi->terlambat_keluar = $keterlambatan['terlambat'];
-            $presensi->menit_terlambat_keluar = $keterlambatan['menit'];
-            
-            $pesan = $keterlambatan['terlambat'] 
-                ? "Presensi keluar berhasil! Pulang terlambat {$keterlambatan['menit']} menit" 
-                : "Presensi keluar berhasil!";
-        }
+} else {
+    // Presensi KELUAR
+    if ($presensi->jam_keluar) {
+        return response()->json([
+            'success' => false,
+            'message' => 'Anda sudah melakukan presensi keluar hari ini!',
+            'data' => [
+                'user' => $user,
+                'presensi' => $presensi
+            ]
+        ], 400);
+    }
+    
+    $presensi->jam_keluar = $jamSekarang;
+    
+    // Hitung status keluar
+    $statusKeluar = PresensiSekolah::hitungKeterlambatanKeluar($jamSekarang);
+    
+    // ✅ Simpan flag pulang_cepat (bukan terlambat)
+    $presensi->terlambat_keluar = false; // Selalu false
+    $presensi->menit_terlambat_keluar = 0; // Selalu 0
+    
+    // ✅ Tambahkan field baru untuk pulang cepat (opsional, kalau mau disimpan di DB)
+    // $presensi->pulang_cepat = $statusKeluar['pulang_cepat'];
+    // $presensi->menit_pulang_cepat = $statusKeluar['menit_terlalu_cepat'] ?? 0;
+    
+    // ✅ PESAN DINAMIS
+    if ($statusKeluar['pulang_cepat']) {
+        $menitCepat = $statusKeluar['menit_terlalu_cepat'] ?? 0;
+        $pesan = "Presensi keluar berhasil! Namun Anda pulang {$menitCepat} menit lebih awal dari jadwal.";
+    } else {
+        $pesan = "Presensi keluar berhasil!";
+    }
+}
 
         $presensi->save();
 

@@ -44,21 +44,38 @@ class PresensiSekolah extends Model
         return ['terlambat' => false, 'menit' => 0];
     }
 
-    // Hitung keterlambatan pulang
-    public static function hitungKeterlambatanKeluar($jamScan)
-    {
-        $pengaturan = PengaturanWaktu::getSekolahPulang();
-        if (!$pengaturan) return ['terlambat' => false, 'menit' => 0];
-
-        $jamMulai = Carbon::parse($pengaturan->jam_mulai);
-        $jamSelesai = Carbon::parse($pengaturan->jam_selesai);
-        $scan = Carbon::parse($jamScan);
-
-        if ($scan->greaterThan($jamSelesai)) {
-            $menit = $scan->diffInMinutes($jamMulai);
-            return ['terlambat' => true, 'menit' => $menit];
-        }
-
-        return ['terlambat' => false, 'menit' => 0];
+public static function hitungKeterlambatanKeluar($jamKeluar)
+{
+    $pengaturan = PengaturanWaktu::getSekolahPulang();
+    
+    if (!$pengaturan) {
+        return [
+            'terlambat' => false, 
+            'menit' => 0,
+            'pulang_cepat' => false
+        ];
     }
+
+    $jamKeluarCarbon = Carbon::createFromFormat('H:i:s', $jamKeluar);
+    $jamMulaiPulang = Carbon::createFromFormat('H:i:s', $pengaturan->jam_mulai);
+
+    // ✅ CEK: Pulang SEBELUM jam_mulai = Pulang terlalu cepat
+    if ($jamKeluarCarbon->lt($jamMulaiPulang)) {
+        $menitTerlalu = $jamMulaiPulang->diffInMinutes($jamKeluarCarbon);
+        
+        return [
+            'terlambat' => false, // ❌ Bukan terlambat
+            'menit' => 0,
+            'pulang_cepat' => true, // ✅ Flag pulang cepat
+            'menit_terlalu_cepat' => $menitTerlalu
+        ];
+    }
+
+    // ✅ Pulang SETELAH/SAAT jam_mulai = Normal (selalu hijau)
+    return [
+        'terlambat' => false,
+        'menit' => 0,
+        'pulang_cepat' => false
+    ];
+}
 }
