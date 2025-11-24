@@ -401,7 +401,7 @@
             <span><i class="fas fa-user-plus me-2"></i> Tambah User</span>
         </a>
     </div>
-
+@endif
     <a class="nav-link {{ request()->routeIs('jadwal-sholat.*') ? 'active' : '' }}" 
        href="{{ route('jadwal-sholat.index') }}">
         <span><i class="fas fa-calendar-alt me-2"></i> Jadwal Sholat</span>
@@ -410,7 +410,6 @@
        href="{{ route('pengaturan.waktu.index') }}">
         <span><i class="fas fa-cog me-2"></i> Pengaturan Waktu</span>
     </a>
-    @endif
 
     <hr style="border-color: rgba(255,255,255,0.1); margin: 15px 10px;">
 
